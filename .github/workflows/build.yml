@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build:
-    name: Build ${ { matrix.flavor } } image
+    name: Build ${{ matrix.flavor }} image
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -25,30 +25,36 @@ jobs:
       - name: Check out this repo (config + extras)
         uses: actions/checkout@v4
 
-      # Aggressive freespace to avoid "No space left on device"
+      # Free a lot of space and move Docker's data root onto the big /mnt volume
       - name: Free disk space (aggressive)
         run: |
           set -eux
           df -h
-          sudo rm -rf /usr/local/lib/android || true
-          sudo rm -rf /usr/share/dotnet || true
-          sudo rm -rf /opt/ghc || true
-          sudo rm -rf /opt/hostedtoolcache || true
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache || true
           sudo docker system prune -af || true
-          # Move Docker storage to /mnt (more space)
           sudo systemctl stop docker
           sudo rm -rf /var/lib/docker || true
-          sudo mkdir -p /mnt/docker
           echo '{"data-root":"/mnt/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo mkdir -p /mnt/docker
           sudo systemctl start docker
           df -h
 
-      # Host-side QEMU/binfmt so chrooted ARM binaries run during pi-gen
+      # Register binfmt for arm64 (helps chroots inside the container)
       - name: Setup QEMU/binfmt on host
         uses: docker/setup-qemu-action@v3
         with:
           platforms: linux/arm64
 
+      # >>> THIS IS THE MISSING PIECE <<<
+      # Install the actual qemu-user-static binary on the HOST so pi-gen can bind-mount it.
+      - name: Install qemu-user-static on host
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
+          sudo update-binfmts --enable
+
+      # Create config if missing (your requested settings)
       - name: Create pi-gen config if missing
         run: |
           set -eux
@@ -85,12 +91,11 @@ jobs:
           echo "---- config ----"
           cat config
 
+      # Ensure custom stages & package lists (no heredocs; safe package names)
       - name: Ensure custom stage folders and package lists
         run: |
           set -eux
           mkdir -p lite-extras/01-packages desktop-extras/01-packages
-
-          # prerun.sh for both
           for d in lite-extras desktop-extras; do
             if [ ! -f "$d/prerun.sh" ]; then
               : > "$d/prerun.sh"
@@ -107,7 +112,7 @@ jobs:
             fi
           done
 
-          # Lite packages
+          # Lite packages (note: usbutils provides lsusb; no wiringpi on trixie)
           if [ ! -f "lite-extras/01-packages/00-packages" ]; then
             : > lite-extras/01-packages/00-packages
             printf '%s\n' \
@@ -117,7 +122,7 @@ jobs:
               > lite-extras/01-packages/00-packages
           fi
 
-          # Desktop packages
+          # Desktop packages (chromium, not chromium-browser)
           if [ ! -f "desktop-extras/01-packages/00-packages" ]; then
             : > desktop-extras/01-packages/00-packages
             printf '%s\n' \
@@ -200,5 +205,3 @@ jobs:
             rpios-arm64-lite.img.xz
             rpios-arm64-desktop.img.xz
             sha256sums.txt
-
-            
