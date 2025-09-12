@@ -29,6 +29,123 @@ jobs:
           remove-android: "true"
           remove-haskell: "true"
 
+      # --- NEW: Create a default config if missing ---
+      - name: Ensure pi-gen config exists (create if missing)
+        shell: bash
+        run: |
+          set -eux
+          if [ ! -f config ]; then
+            cat > config <<'EOF'
+# ---- Image basics ----
+IMG_NAME="rpios-arm64"
+RELEASE="trixie"
+PI_GEN_RELEASE="Raspberry Pi reference"
+
+# ---- Compression ----
+DEPLOY_COMPRESSION="xz"
+COMPRESSION_LEVEL="6"
+
+# ---- Identity / login ----
+TARGET_HOSTNAME="rpi"
+FIRST_USER_NAME="pi"
+FIRST_USER_PASS=""            # empty => locked; set on first boot wizard
+DISABLE_FIRST_BOOT_USER_RENAME="0"
+
+# ---- Regional ----
+LOCALE_DEFAULT="en_CA.UTF-8"
+TIMEZONE_DEFAULT="America/Halifax"   # change to "UTC" if preferred
+KEYBOARD_KEYMAP="ca"
+KEYBOARD_LAYOUT="English (Canada)"
+
+# ---- Connectivity ----
+WPA_COUNTRY="CA"
+ENABLE_SSH="1"
+PUBKEY_ONLY_SSH="0"           # allow password after first-boot user creation
+EOF
+          fi
+          echo "==== config ===="
+          cat config
+
+      # --- NEW: Create custom stages and package lists if missing ---
+      - name: Ensure custom stage folders and package lists
+        shell: bash
+        run: |
+          set -eux
+          mkdir -p lite-extras/01-packages desktop-extras/01-packages
+
+          # prerun.sh for both stages
+          for d in lite-extras desktop-extras; do
+            if [ ! -f "$d/prerun.sh" ]; then
+              cat > "$d/prerun.sh" <<'EOS'
+#!/bin/bash -e
+if [ ! -d "${ROOTFS_DIR}" ]; then
+  mkdir -p "${ROOTFS_DIR}"
+fi
+if [ -d "${PREV_ROOTFS_DIR}" ]; then
+  rsync -aHAXx --numeric-ids --delete "${PREV_ROOTFS_DIR}/" "${ROOTFS_DIR}/"
+fi
+EOS
+              chmod +x "$d/prerun.sh"
+            fi
+          done
+
+          # Lite package list
+          if [ ! -f "lite-extras/01-packages/00-packages" ]; then
+            cat > lite-extras/01-packages/00-packages <<'EOS'
+htop
+nano
+git
+curl
+wget
+net-tools
+usbutils
+build-essential
+python3
+python3-pip
+nodejs
+npm
+python3-rpi.gpio
+apache2
+mariadb-server
+php
+samba
+EOS
+          fi
+
+          # Desktop package list
+          if [ ! -f "desktop-extras/01-packages/00-packages" ]; then
+            cat > desktop-extras/01-packages/00-packages <<'EOS'
+htop
+nano
+git
+curl
+wget
+net-tools
+usbutils
+build-essential
+python3
+python3-pip
+nodejs
+npm
+python3-rpi.gpio
+apache2
+mariadb-server
+php
+samba
+chromium
+vlc
+gimp
+libreoffice
+thunderbird
+geany
+EOS
+          fi
+
+          echo "==== lite-extras/01-packages/00-packages ===="
+          cat lite-extras/01-packages/00-packages || true
+          echo "==== desktop-extras/01-packages/00-packages ===="
+          cat desktop-extras/01-packages/00-packages || true
+
       - name: Clone official pi-gen (arm64)
         run: |
           set -eux
@@ -59,8 +176,17 @@ jobs:
           DEPLOY_DIR=$(find pi-gen-src -type d -name deploy | head -n1)
           mkdir -p out
           # Find latest Lite (stage2) and Desktop (stage4) images:
-          LITE=$(ls -1t "$DEPLOY_DIR"/*lite*.img.xz | head -n1)
-          DESKTOP=$(ls -1t "$DEPLOY_DIR"/*.img.xz | grep -v lite | head -n1)
+          LITE=$(ls -1t "$DEPLOY_DIR"/*lite*.img.xz | head -n1 || true)
+          DESKTOP=$(ls -1t "$DEPLOY_DIR"/*.img.xz | grep -v lite | head -n1 || true)
+
+          # Sometimes names don't include 'lite'—fall back by stage order:
+          if [ -z "${LITE}" ] || [ -z "${DESKTOP}" ]; then
+            # Pick two newest .img.xz; assume older is Lite, newer is Desktop
+            TWO=$(ls -1t "$DEPLOY_DIR"/*.img.xz | head -n2 | tac)
+            LITE=$(echo "$TWO" | head -n1)
+            DESKTOP=$(echo "$TWO" | tail -n1)
+          fi
+
           cp "$LITE"    out/rpios-arm64-lite.img.xz
           cp "$DESKTOP" out/rpios-arm64-desktop.img.xz
           (cd out && sha256sum *.img.xz > sha256sums.txt)
