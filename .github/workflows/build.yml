@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out your repo (for config + extras)
+      - name: Check out this repo
         uses: actions/checkout@v4
 
       - name: Maximize build space
@@ -29,9 +29,8 @@ jobs:
           remove-android: "true"
           remove-haskell: "true"
 
-      # --- NEW: Create a default config if missing ---
-      - name: Ensure pi-gen config exists (create if missing)
-        shell: bash
+      # Create a valid pi-gen config if it's missing
+      - name: Ensure pi-gen config exists
         run: |
           set -eux
           if [ ! -f config ]; then
@@ -63,17 +62,16 @@ ENABLE_SSH="1"
 PUBKEY_ONLY_SSH="0"           # allow password after first-boot user creation
 EOF
           fi
-          echo "==== config ===="
+          echo "---- config ----"
           cat config
 
-      # --- NEW: Create custom stages and package lists if missing ---
+      # Create custom stages & package lists if missing
       - name: Ensure custom stage folders and package lists
-        shell: bash
         run: |
           set -eux
           mkdir -p lite-extras/01-packages desktop-extras/01-packages
 
-          # prerun.sh for both stages
+          # prerun.sh (both)
           for d in lite-extras desktop-extras; do
             if [ ! -f "$d/prerun.sh" ]; then
               cat > "$d/prerun.sh" <<'EOS'
@@ -89,7 +87,7 @@ EOS
             fi
           done
 
-          # Lite package list
+          # Lite packages
           if [ ! -f "lite-extras/01-packages/00-packages" ]; then
             cat > lite-extras/01-packages/00-packages <<'EOS'
 htop
@@ -112,7 +110,7 @@ samba
 EOS
           fi
 
-          # Desktop package list
+          # Desktop packages
           if [ ! -f "desktop-extras/01-packages/00-packages" ]; then
             cat > desktop-extras/01-packages/00-packages <<'EOS'
 htop
@@ -141,18 +139,13 @@ geany
 EOS
           fi
 
-          echo "==== lite-extras/01-packages/00-packages ===="
-          cat lite-extras/01-packages/00-packages || true
-          echo "==== desktop-extras/01-packages/00-packages ===="
-          cat desktop-extras/01-packages/00-packages || true
-
       - name: Clone official pi-gen (arm64)
         run: |
           set -eux
           git clone --branch arm64 --depth 1 https://github.com/RPi-Distro/pi-gen.git pi-gen-src
           ls -la pi-gen-src
 
-      - name: Drop in your config and custom stages
+      - name: Inject config and custom stages
         run: |
           set -eux
           cp -f config pi-gen-src/config
@@ -175,18 +168,14 @@ EOS
           set -eux
           DEPLOY_DIR=$(find pi-gen-src -type d -name deploy | head -n1)
           mkdir -p out
-          # Find latest Lite (stage2) and Desktop (stage4) images:
-          LITE=$(ls -1t "$DEPLOY_DIR"/*lite*.img.xz | head -n1 || true)
-          DESKTOP=$(ls -1t "$DEPLOY_DIR"/*.img.xz | grep -v lite | head -n1 || true)
-
-          # Sometimes names don't include 'lite'—fall back by stage order:
-          if [ -z "${LITE}" ] || [ -z "${DESKTOP}" ]; then
-            # Pick two newest .img.xz; assume older is Lite, newer is Desktop
+          # Try to pick Lite/Desktop by filename, fallback to newest two
+          LITE=$(ls -1t "$DEPLOY_DIR"/*lite*.img.xz 2>/dev/null | head -n1 || true)
+          DESKTOP=$(ls -1t "$DEPLOY_DIR"/*.img.xz 2>/dev/null | grep -v lite | head -n1 || true)
+          if [ -z "$LITE" ] || [ -z "$DESKTOP" ]; then
             TWO=$(ls -1t "$DEPLOY_DIR"/*.img.xz | head -n2 | tac)
             LITE=$(echo "$TWO" | head -n1)
             DESKTOP=$(echo "$TWO" | tail -n1)
           fi
-
           cp "$LITE"    out/rpios-arm64-lite.img.xz
           cp "$DESKTOP" out/rpios-arm64-desktop.img.xz
           (cd out && sha256sum *.img.xz > sha256sums.txt)
