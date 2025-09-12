@@ -1,0 +1,110 @@
+name: Build Raspberry Pi OS (arm64, trixie) — Lite + Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build.yml"
+      - "lite-extras/**"
+      - "desktop-extras/**"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out this repo (your fork)
+        uses: actions/checkout@v4
+
+      # Free disk so Docker/qemu builds succeed
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 1024
+          swap-size-mb: 8192
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+
+      - name: Ensure custom stage files exist
+        run: |
+          set -eux
+          # (Files will already be in repo; this is just a safety net.)
+          for d in lite-extras desktop-extras; do
+            mkdir -p "$d/01-packages"
+          done
+
+      - name: Build images with pi-gen (arm64, trixie)
+        id: build
+        uses: usimd/pi-gen-action@v1
+        with:
+          # Use YOUR fork (already has arm64 branch)
+          pi-gen-repository: Atrion/pi-gen
+          pi-gen-version: arm64
+
+          # Build Debian/RPi OS release
+          release: trixie
+
+          # Name base; we'll rename outputs to -lite / -desktop
+          image-name: rpios-arm64
+
+          # Build path: insert our custom stages before stage2 and stage4
+          stage-list: stage0 stage1 ./lite-extras stage2 stage3 ./desktop-extras stage4
+
+          # Export both lite (stage2) and desktop (stage4) images
+          export-last-stage-only: false
+
+          # System identity & login
+          hostname: rpi
+          username: pi
+          password: ""                            # empty → set on first boot
+          disable-first-boot-user-rename: 0       # allow rename (official default)
+
+          # Regionals
+          locale: en_CA.UTF-8
+          timezone: America/Halifax               # change to "UTC" if you prefer
+          keyboard-keymap: ca
+          keyboard-layout: "English (Canada)"
+          wpa-country: CA
+
+          # Access
+          enable-ssh: true
+          pubkey-only-ssh: false                  # allow password login
+
+          # Compression
+          compression: xz
+          compression-level: 6
+
+          # CI runner disk headroom
+          increase-runner-disk-size: true
+
+      - name: Collect and rename images
+        shell: bash
+        run: |
+          set -eux
+          # Find the deploy folder produced by pi-gen
+          DEPLOY_DIR=$(find . -type d -name deploy | head -n1)
+          echo "Deploy dir: $DEPLOY_DIR"
+          mkdir -p out
+
+          # Grab the newest lite + desktop images and rename exactly as requested
+          LITE=$(ls -1t "$DEPLOY_DIR"/*lite*.img.xz | head -n1)
+          DESKTOP=$(ls -1t "$DEPLOY_DIR"/*.img.xz | grep -v lite | head -n1)
+
+          cp "$LITE"    out/rpios-arm64-lite.img.xz
+          cp "$DESKTOP" out/rpios-arm64-desktop.img.xz
+          (cd out && sha256sum *.img.xz > sha256sums.txt)
+          ls -lh out
+
+      - name: Publish GitHub Release (tag = run id)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_id }}
+          name: "Raspberry Pi OS (arm64, trixie) — Lite + Desktop"
+          files: |
+            out/rpios-arm64-lite.img.xz
+            out/rpios-arm64-desktop.img.xz
+            out/sha256sums.txt

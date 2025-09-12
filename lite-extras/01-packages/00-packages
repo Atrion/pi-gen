@@ -1,0 +1,17 @@
+htop
+nano
+git
+curl
+wget
+net-tools
+usbutils
+build-essential
+python3
+python3-pip
+nodejs
+npm
+python3-rpi.gpio
+apache2
+mariadb-server
+php
+samba
