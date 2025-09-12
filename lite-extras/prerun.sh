@@ -1,5 +1,4 @@
 #!/bin/bash -e
-# Standard pi-gen stage contract: copy previous stage rootfs
 if [ ! -d "${ROOTFS_DIR}" ]; then
   mkdir -p "${ROOTFS_DIR}"
 fi

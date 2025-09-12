@@ -1,6 +1,6 @@
 # ---- Image basics ----
-IMG_NAME="rpios-arm64"        # We'll rename final files to -lite / -desktop later
-RELEASE="trixie"              # pi-gen supports trixie (default)
+IMG_NAME="rpios-arm64"
+RELEASE="trixie"
 PI_GEN_RELEASE="Raspberry Pi reference"
 
 # ---- Compression ----
@@ -10,21 +10,16 @@ COMPRESSION_LEVEL="6"
 # ---- Identity / login ----
 TARGET_HOSTNAME="rpi"
 FIRST_USER_NAME="pi"
-FIRST_USER_PASS=""            # empty => locked; first-boot wizard asks you to set it
+FIRST_USER_PASS=""            # empty => account locked; set on first boot wizard
 DISABLE_FIRST_BOOT_USER_RENAME="0"
 
 # ---- Regional ----
 LOCALE_DEFAULT="en_CA.UTF-8"
-TIMEZONE_DEFAULT="America/Halifax"   # change to "UTC" if you prefer
+TIMEZONE_DEFAULT="America/Halifax"   # change to "UTC" if preferred
 KEYBOARD_KEYMAP="ca"
 KEYBOARD_LAYOUT="English (Canada)"
 
 # ---- Connectivity ----
 WPA_COUNTRY="CA"
 ENABLE_SSH="1"
-PUBKEY_ONLY_SSH="0"           # allow password login once you set it at first boot
-
-# ---- Build layout ----
-# We set STAGE_LIST from the workflow env so we can tweak it per-run.
-# Example value:
-# STAGE_LIST="stage0 stage1 ./lite-extras stage2 stage3 ./desktop-extras stage4"
+PUBKEY_ONLY_SSH="0"           # allow password after first-boot user creation

@@ -15,11 +15,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Check out your fork (arm64 branch)
+      - name: Check out your repo (for config + extras)
         uses: actions/checkout@v4
 
-      # Free space so the Docker build has room
       - name: Maximize build space
         uses: easimon/maximize-build-space@v10
         with:
@@ -29,31 +29,36 @@ jobs:
           remove-android: "true"
           remove-haskell: "true"
 
-      # Safety: make sure our custom stage folders exist
-      - name: Ensure custom stage folders exist
+      - name: Clone official pi-gen (arm64)
         run: |
           set -eux
-          mkdir -p lite-extras/01-packages desktop-extras/01-packages
+          git clone --branch arm64 --depth 1 https://github.com/RPi-Distro/pi-gen.git pi-gen-src
+          ls -la pi-gen-src
 
-      # Build via official pi-gen Docker script (supports RELEASE=trixie)
-      - name: Build images with pi-gen (Docker)
+      - name: Drop in your config and custom stages
+        run: |
+          set -eux
+          cp -f config pi-gen-src/config
+          cp -r lite-extras pi-gen-src/lite-extras
+          cp -r desktop-extras pi-gen-src/desktop-extras
+          chmod +x pi-gen-src/lite-extras/prerun.sh
+          chmod +x pi-gen-src/desktop-extras/prerun.sh
+
+      - name: Build images via pi-gen Docker
         env:
-          # pi-gen reads these from ./config (below). STAGE_LIST is here:
           STAGE_LIST: "stage0 stage1 ./lite-extras stage2 stage3 ./desktop-extras stage4"
         run: |
           set -eux
-          # We’re already in the pi-gen repo (your fork) on the arm64 branch.
-          # Confirm RELEASE default + STAGE_LIST override.
+          cd pi-gen-src
           echo "Using STAGE_LIST=${STAGE_LIST}"
           ./build-docker.sh
 
-      # Collect and rename outputs to your requested filenames
       - name: Collect and rename artifacts
         run: |
           set -eux
-          DEPLOY_DIR=$(find . -type d -name deploy | head -n1)
+          DEPLOY_DIR=$(find pi-gen-src -type d -name deploy | head -n1)
           mkdir -p out
-          # Pick newest lite + desktop .img.xz and rename:
+          # Find latest Lite (stage2) and Desktop (stage4) images:
           LITE=$(ls -1t "$DEPLOY_DIR"/*lite*.img.xz | head -n1)
           DESKTOP=$(ls -1t "$DEPLOY_DIR"/*.img.xz | grep -v lite | head -n1)
           cp "$LITE"    out/rpios-arm64-lite.img.xz
@@ -61,8 +66,7 @@ jobs:
           (cd out && sha256sum *.img.xz > sha256sums.txt)
           ls -lh out
 
-      # Publish a Release with both images + checksums
-      - name: Create GitHub Release
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_id }}
