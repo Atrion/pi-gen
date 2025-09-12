@@ -1,35 +1,55 @@
-name: Build RPi OS arm64 (Trixie) - Lite and Desktop
+name: Build RPi OS arm64 (Trixie) - Lite and Desktop (Split Jobs)
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - .github/workflows/build.yml
-      - config
-      - lite-extras/**
-      - desktop-extras/**
 
 permissions:
   contents: write
 
 jobs:
   build:
+    name: Build ${ { matrix.flavor } } image
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: lite
+            stage_list: "stage0 stage1 ./lite-extras stage2"
+            out_name: "rpios-arm64-lite.img.xz"
+          - flavor: desktop
+            stage_list: "stage0 stage1 stage2 stage3 ./desktop-extras stage4"
+            out_name: "rpios-arm64-desktop.img.xz"
+
     steps:
-      - name: Check out this repo
+      - name: Check out this repo (config + extras)
         uses: actions/checkout@v4
 
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
-        with:
-          root-reserve-mb: 1024
-          swap-size-mb: 8192
-          remove-dotnet: "true"
-          remove-android: "true"
-          remove-haskell: "true"
+      # Aggressive freespace to avoid "No space left on device"
+      - name: Free disk space (aggressive)
+        run: |
+          set -eux
+          df -h
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /opt/hostedtoolcache || true
+          sudo docker system prune -af || true
+          # Move Docker storage to /mnt (more space)
+          sudo systemctl stop docker
+          sudo rm -rf /var/lib/docker || true
+          sudo mkdir -p /mnt/docker
+          echo '{"data-root":"/mnt/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl start docker
+          df -h
 
-      # Create a valid pi-gen config if it's missing (no heredoc; ASCII only)
-      - name: Ensure pi-gen config exists
+      # Host-side QEMU/binfmt so chrooted ARM binaries run during pi-gen
+      - name: Setup QEMU/binfmt on host
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Create pi-gen config if missing
         run: |
           set -eux
           if [ ! -f config ]; then
@@ -65,13 +85,12 @@ jobs:
           echo "---- config ----"
           cat config
 
-      # Create custom stages & package lists if missing (no heredoc)
       - name: Ensure custom stage folders and package lists
         run: |
           set -eux
           mkdir -p lite-extras/01-packages desktop-extras/01-packages
 
-          # prerun.sh for both (no heredoc; exact content)
+          # prerun.sh for both
           for d in lite-extras desktop-extras; do
             if [ ! -f "$d/prerun.sh" ]; then
               : > "$d/prerun.sh"
@@ -88,7 +107,7 @@ jobs:
             fi
           done
 
-          # Lite package list
+          # Lite packages
           if [ ! -f "lite-extras/01-packages/00-packages" ]; then
             : > lite-extras/01-packages/00-packages
             printf '%s\n' \
@@ -98,7 +117,7 @@ jobs:
               > lite-extras/01-packages/00-packages
           fi
 
-          # Desktop package list
+          # Desktop packages
           if [ ! -f "desktop-extras/01-packages/00-packages" ]; then
             : > desktop-extras/01-packages/00-packages
             printf '%s\n' \
@@ -123,42 +142,54 @@ jobs:
           cp -r desktop-extras pi-gen-src/desktop-extras
           chmod +x pi-gen-src/lite-extras/prerun.sh
           chmod +x pi-gen-src/desktop-extras/prerun.sh
-          
-      - name: Setup QEMU on host (binfmt + static binaries)
-        run: |
-          set -eux
-          sudo apt-get update
-          # Install static ARM emulators and ensure binfmt registration on the host
-          sudo apt-get install -y qemu-user-static binfmt-support
-          # Refresh/ensure binfmt handlers for arm64 are active
-          docker run --privileged --rm tonistiigi/binfmt --install arm64
 
-      - name: Build images via pi-gen Docker
+      - name: Build image via pi-gen Docker
         env:
-          STAGE_LIST: stage0 stage1 ./lite-extras stage2 stage3 ./desktop-extras stage4
+          STAGE_LIST: ${{ matrix.stage_list }}
         run: |
           set -eux
           cd pi-gen-src
           echo "Using STAGE_LIST=${STAGE_LIST}"
           ./build-docker.sh
 
-      - name: Collect and rename artifacts
+      - name: Collect artifact
         run: |
           set -eux
           DEPLOY_DIR=$(find pi-gen-src -type d -name deploy | head -n1)
           mkdir -p out
-          # Try to pick Lite/Desktop by filename, fallback to newest two
-          LITE=$(ls -1t "$DEPLOY_DIR"/*lite*.img.xz 2>/dev/null | head -n1 || true)
-          DESKTOP=$(ls -1t "$DEPLOY_DIR"/*.img.xz 2>/dev/null | grep -v lite | head -n1 || true)
-          if [ -z "$LITE" ] || [ -z "$DESKTOP" ]; then
-            TWO=$(ls -1t "$DEPLOY_DIR"/*.img.xz | head -n2 | tac)
-            LITE=$(echo "$TWO" | head -n1)
-            DESKTOP=$(echo "$TWO" | tail -n1)
-          fi
-          cp "$LITE"    out/rpios-arm64-lite.img.xz
-          cp "$DESKTOP" out/rpios-arm64-desktop.img.xz
-          (cd out && sha256sum *.img.xz > sha256sums.txt)
+          IMG=$(ls -1t "$DEPLOY_DIR"/*.img.xz | head -n1)
+          cp "$IMG" "out/${{ matrix.out_name }}"
+          (cd out && sha256sum "${{ matrix.out_name }}" > "${{ matrix.out_name }}.sha256")
           ls -lh out
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.out_name }}
+          path: |
+            out/${{ matrix.out_name }}
+            out/${{ matrix.out_name }}.sha256
+
+  release:
+    name: Create combined GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download Lite artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rpios-arm64-lite.img.xz
+
+      - name: Download Desktop artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rpios-arm64-desktop.img.xz
+
+      - name: Combine checksums
+        run: |
+          set -eux
+          cat rpios-arm64-lite.img.xz.sha256 rpios-arm64-desktop.img.xz.sha256 > sha256sums.txt
+          ls -lh
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -166,6 +197,6 @@ jobs:
           tag_name: v${{ github.run_id }}
           name: RPi OS arm64 (Trixie) - Lite and Desktop
           files: |
-            out/rpios-arm64-lite.img.xz
-            out/rpios-arm64-desktop.img.xz
-            out/sha256sums.txt
+            rpios-arm64-lite.img.xz
+            rpios-arm64-desktop.img.xz
+            sha256sums.txt
