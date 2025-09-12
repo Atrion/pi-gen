@@ -123,6 +123,15 @@ jobs:
           cp -r desktop-extras pi-gen-src/desktop-extras
           chmod +x pi-gen-src/lite-extras/prerun.sh
           chmod +x pi-gen-src/desktop-extras/prerun.sh
+          
+      - name: Setup QEMU on host (binfmt + static binaries)
+        run: |
+          set -eux
+          sudo apt-get update
+          # Install static ARM emulators and ensure binfmt registration on the host
+          sudo apt-get install -y qemu-user-static binfmt-support
+          # Refresh/ensure binfmt handlers for arm64 are active
+          docker run --privileged --rm tonistiigi/binfmt --install arm64
 
       - name: Build images via pi-gen Docker
         env:
