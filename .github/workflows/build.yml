@@ -1,13 +1,13 @@
-name: Build RPi OS arm64 (Trixie) — Lite + Desktop
+name: Build RPi OS arm64 (Trixie) - Lite and Desktop
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - ".github/workflows/build.yml"
-      - "config"
-      - "lite-extras/**"
-      - "desktop-extras/**"
+      - .github/workflows/build.yml
+      - config
+      - lite-extras/**
+      - desktop-extras/**
 
 permissions:
   contents: write
@@ -15,7 +15,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out this repo
         uses: actions/checkout@v4
@@ -29,114 +28,85 @@ jobs:
           remove-android: "true"
           remove-haskell: "true"
 
-      # Create a valid pi-gen config if it's missing
+      # Create a valid pi-gen config if it's missing (no heredoc; ASCII only)
       - name: Ensure pi-gen config exists
         run: |
           set -eux
           if [ ! -f config ]; then
-            cat > config <<'EOF'
-# ---- Image basics ----
-IMG_NAME="rpios-arm64"
-RELEASE="trixie"
-PI_GEN_RELEASE="Raspberry Pi reference"
-
-# ---- Compression ----
-DEPLOY_COMPRESSION="xz"
-COMPRESSION_LEVEL="6"
-
-# ---- Identity / login ----
-TARGET_HOSTNAME="rpi"
-FIRST_USER_NAME="pi"
-FIRST_USER_PASS=""            # empty => locked; set on first boot wizard
-DISABLE_FIRST_BOOT_USER_RENAME="0"
-
-# ---- Regional ----
-LOCALE_DEFAULT="en_CA.UTF-8"
-TIMEZONE_DEFAULT="America/Halifax"   # change to "UTC" if preferred
-KEYBOARD_KEYMAP="ca"
-KEYBOARD_LAYOUT="English (Canada)"
-
-# ---- Connectivity ----
-WPA_COUNTRY="CA"
-ENABLE_SSH="1"
-PUBKEY_ONLY_SSH="0"           # allow password after first-boot user creation
-EOF
+            : > config
+            printf '%s\n' \
+              '# ---- Image basics ----' \
+              'IMG_NAME="rpios-arm64"' \
+              'RELEASE="trixie"' \
+              'PI_GEN_RELEASE="Raspberry Pi reference"' \
+              '' \
+              '# ---- Compression ----' \
+              'DEPLOY_COMPRESSION="xz"' \
+              'COMPRESSION_LEVEL="6"' \
+              '' \
+              '# ---- Identity / login ----' \
+              'TARGET_HOSTNAME="rpi"' \
+              'FIRST_USER_NAME="pi"' \
+              'FIRST_USER_PASS=""' \
+              'DISABLE_FIRST_BOOT_USER_RENAME="0"' \
+              '' \
+              '# ---- Regional ----' \
+              'LOCALE_DEFAULT="en_CA.UTF-8"' \
+              'TIMEZONE_DEFAULT="America/Halifax"' \
+              'KEYBOARD_KEYMAP="ca"' \
+              'KEYBOARD_LAYOUT="English (Canada)"' \
+              '' \
+              '# ---- Connectivity ----' \
+              'WPA_COUNTRY="CA"' \
+              'ENABLE_SSH="1"' \
+              'PUBKEY_ONLY_SSH="0"' \
+              >> config
           fi
           echo "---- config ----"
           cat config
 
-      # Create custom stages & package lists if missing
+      # Create custom stages & package lists if missing (no heredoc)
       - name: Ensure custom stage folders and package lists
         run: |
           set -eux
           mkdir -p lite-extras/01-packages desktop-extras/01-packages
 
-          # prerun.sh (both)
+          # prerun.sh for both (no heredoc; exact content)
           for d in lite-extras desktop-extras; do
             if [ ! -f "$d/prerun.sh" ]; then
-              cat > "$d/prerun.sh" <<'EOS'
-#!/bin/bash -e
-if [ ! -d "${ROOTFS_DIR}" ]; then
-  mkdir -p "${ROOTFS_DIR}"
-fi
-if [ -d "${PREV_ROOTFS_DIR}" ]; then
-  rsync -aHAXx --numeric-ids --delete "${PREV_ROOTFS_DIR}/" "${ROOTFS_DIR}/"
-fi
-EOS
+              : > "$d/prerun.sh"
+              printf '%s\n' \
+                '#!/bin/bash -e' \
+                'if [ ! -d "${ROOTFS_DIR}" ]; then' \
+                '  mkdir -p "${ROOTFS_DIR}"' \
+                'fi' \
+                'if [ -d "${PREV_ROOTFS_DIR}" ]; then' \
+                '  rsync -aHAXx --numeric-ids --delete "${PREV_ROOTFS_DIR}/" "${ROOTFS_DIR}/"' \
+                'fi' \
+                > "$d/prerun.sh"
               chmod +x "$d/prerun.sh"
             fi
           done
 
-          # Lite packages
+          # Lite package list
           if [ ! -f "lite-extras/01-packages/00-packages" ]; then
-            cat > lite-extras/01-packages/00-packages <<'EOS'
-htop
-nano
-git
-curl
-wget
-net-tools
-usbutils
-build-essential
-python3
-python3-pip
-nodejs
-npm
-python3-rpi.gpio
-apache2
-mariadb-server
-php
-samba
-EOS
+            : > lite-extras/01-packages/00-packages
+            printf '%s\n' \
+              htop nano git curl wget net-tools usbutils build-essential \
+              python3 python3-pip nodejs npm python3-rpi.gpio \
+              apache2 mariadb-server php samba \
+              > lite-extras/01-packages/00-packages
           fi
 
-          # Desktop packages
+          # Desktop package list
           if [ ! -f "desktop-extras/01-packages/00-packages" ]; then
-            cat > desktop-extras/01-packages/00-packages <<'EOS'
-htop
-nano
-git
-curl
-wget
-net-tools
-usbutils
-build-essential
-python3
-python3-pip
-nodejs
-npm
-python3-rpi.gpio
-apache2
-mariadb-server
-php
-samba
-chromium
-vlc
-gimp
-libreoffice
-thunderbird
-geany
-EOS
+            : > desktop-extras/01-packages/00-packages
+            printf '%s\n' \
+              htop nano git curl wget net-tools usbutils build-essential \
+              python3 python3-pip nodejs npm python3-rpi.gpio \
+              apache2 mariadb-server php samba \
+              chromium vlc gimp libreoffice thunderbird geany \
+              > desktop-extras/01-packages/00-packages
           fi
 
       - name: Clone official pi-gen (arm64)
@@ -156,7 +126,7 @@ EOS
 
       - name: Build images via pi-gen Docker
         env:
-          STAGE_LIST: "stage0 stage1 ./lite-extras stage2 stage3 ./desktop-extras stage4"
+          STAGE_LIST: stage0 stage1 ./lite-extras stage2 stage3 ./desktop-extras stage4
         run: |
           set -eux
           cd pi-gen-src
@@ -185,7 +155,7 @@ EOS
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_id }}
-          name: "RPi OS arm64 (Trixie) — Lite + Desktop"
+          name: RPi OS arm64 (Trixie) - Lite and Desktop
           files: |
             out/rpios-arm64-lite.img.xz
             out/rpios-arm64-desktop.img.xz
