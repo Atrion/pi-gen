@@ -1,4 +1,4 @@
-name: Build RPi OS arm64 (Trixie) - Lite and Desktop (Split Jobs)
+name: Build RPi OS arm64 (Trixie) - Lite, Desktop, Full, Kiosk
 
 on:
   workflow_dispatch:
@@ -24,12 +24,17 @@ jobs:
           - flavor: desktop
             stage_list: "stage0 stage1 stage2 stage3 ./desktop-extras stage4"
             out_name: "rpios-arm64-desktop.img.xz"
+          - flavor: desktop-full
+            stage_list: "stage0 stage1 stage2 stage3 ./desktop-extras stage4 stage5"
+            out_name: "rpios-arm64-desktop-full.img.xz"
+          - flavor: kiosk
+            stage_list: "stage0 stage1 stage2 stage3 ./kiosk-extras stage4"
+            out_name: "rpios-arm64-kiosk.img.xz"
 
     steps:
       - name: Check out this repo (config + extras)
         uses: actions/checkout@v4
 
-      # Free a lot of space and move Docker's data root onto the big /mnt volume
       - name: Free disk space (aggressive)
         run: |
           set -eux
@@ -43,14 +48,11 @@ jobs:
           sudo systemctl start docker
           df -h
 
-      # Register binfmt for arm64 (helps chroots inside the container)
       - name: Setup QEMU/binfmt on host
         uses: docker/setup-qemu-action@v3
         with:
           platforms: linux/arm64
 
-      # >>> THIS IS THE MISSING PIECE <<<
-      # Install the actual qemu-user-static binary on the HOST so pi-gen can bind-mount it.
       - name: Install qemu-user-static on host
         run: |
           set -eux
@@ -58,7 +60,6 @@ jobs:
           sudo apt-get install -y qemu-user-static binfmt-support
           sudo update-binfmts --enable
 
-      # Create config if missing (your requested settings)
       - name: Create pi-gen config if missing
         run: |
           set -eux
@@ -95,12 +96,13 @@ jobs:
           echo "---- config ----"
           cat config
 
-      # Ensure custom stages & package lists (no heredocs; safe package names)
       - name: Ensure custom stage folders and package lists
         run: |
           set -eux
-          mkdir -p lite-extras/01-packages desktop-extras/01-packages
-          for d in lite-extras desktop-extras; do
+          mkdir -p lite-extras/01-packages desktop-extras/01-packages kiosk-extras/01-packages
+
+          # prerun.sh for all custom stages
+          for d in lite-extras desktop-extras kiosk-extras; do
             if [ ! -f "$d/prerun.sh" ]; then
               : > "$d/prerun.sh"
               printf '%s\n' \
@@ -116,7 +118,7 @@ jobs:
             fi
           done
 
-          # Lite packages (note: usbutils provides lsusb; no wiringpi on trixie)
+          # Lite package list
           if [ ! -f "lite-extras/01-packages/00-packages" ]; then
             : > lite-extras/01-packages/00-packages
             printf '%s\n' \
@@ -126,7 +128,7 @@ jobs:
               > lite-extras/01-packages/00-packages
           fi
 
-          # Desktop packages (chromium, not chromium-browser)
+          # Desktop package list
           if [ ! -f "desktop-extras/01-packages/00-packages" ]; then
             : > desktop-extras/01-packages/00-packages
             printf '%s\n' \
@@ -135,6 +137,69 @@ jobs:
               apache2 mariadb-server php samba \
               chromium vlc gimp libreoffice thunderbird geany \
               > desktop-extras/01-packages/00-packages
+          fi
+
+          # Kiosk package list
+          if [ ! -f "kiosk-extras/01-packages/00-packages" ]; then
+            : > kiosk-extras/01-packages/00-packages
+            printf '%s\n' \
+              chromium xserver-xorg x11-xserver-utils xinit openbox unclutter \
+              > kiosk-extras/01-packages/00-packages
+          fi
+
+          # Kiosk setup script (no YAML heredocs; build script lines via echo)
+          if [ ! -f "kiosk-extras/02-run-chroot.sh" ]; then
+            : > kiosk-extras/02-run-chroot.sh
+            chmod +x kiosk-extras/02-run-chroot.sh
+            {
+              echo '#!/bin/bash -e'
+              echo 'install -d -m 0755 /etc/systemd/system/getty@tty1.service.d'
+              echo 'cat > /etc/systemd/system/getty@tty1.service.d/override.conf << "EOT"'
+              echo '[Service]'
+              echo 'ExecStart='
+              echo 'ExecStart=-/sbin/agetty --autologin pi --noclear %I $TERM'
+              echo 'EOT'
+              echo ''
+              echo 'for dm in lightdm sddm gdm3 nodm lxdm; do'
+              echo '  systemctl disable "$dm" 2>/dev/null || true'
+              echo 'done'
+              echo ''
+              echo 'install -d -m 0700 /home/pi'
+              echo 'if ! id -u pi >/dev/null 2>&1; then'
+              echo '  useradd -m -s /bin/bash pi || true'
+              echo 'fi'
+              echo 'chown -R pi:pi /home/pi'
+              echo ''
+              echo 'cat > /home/pi/.bash_profile << "EOT"'
+              echo 'if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then'
+              echo '  startx'
+              echo 'fi'
+              echo 'EOT'
+              echo 'chown pi:pi /home/pi/.bash_profile'
+              echo 'chmod 0644 /home/pi/.bash_profile'
+              echo ''
+              echo 'cat > /home/pi/.xinitrc << "EOT"'
+              echo '#!/bin/sh'
+              echo 'xset -dpms'
+              echo 'xset s off'
+              echo 'xset s noblank'
+              echo 'unclutter -idle 0.5 -root &'
+              echo 'URL="about:blank"'
+              echo 'if [ -f /boot/kiosk-url.txt ]; then'
+              echo '  URL="$(head -n1 /boot/kiosk-url.txt)"'
+              echo 'fi'
+              echo 'openbox-session &'
+              echo 'sleep 2'
+              echo 'chromium --kiosk --no-first-run --incognito --overscroll-history-navigation=0 "$URL"'
+              echo 'EOT'
+              echo 'chown pi:pi /home/pi/.xinitrc'
+              echo 'chmod 0755 /home/pi/.xinitrc'
+              echo ''
+              echo 'echo "about:blank" > /boot/kiosk-url.txt'
+              echo ''
+              echo 'systemctl daemon-reload'
+              echo 'systemctl enable getty@tty1.service'
+            } >> kiosk-extras/02-run-chroot.sh
           fi
 
       - name: Clone official pi-gen (arm64)
@@ -149,8 +214,11 @@ jobs:
           cp -f config pi-gen-src/config
           cp -r lite-extras pi-gen-src/lite-extras
           cp -r desktop-extras pi-gen-src/desktop-extras
+          cp -r kiosk-extras pi-gen-src/kiosk-extras
           chmod +x pi-gen-src/lite-extras/prerun.sh
           chmod +x pi-gen-src/desktop-extras/prerun.sh
+          chmod +x pi-gen-src/kiosk-extras/prerun.sh
+          [ -f pi-gen-src/kiosk-extras/02-run-chroot.sh ] && chmod +x pi-gen-src/kiosk-extras/02-run-chroot.sh || true
 
       - name: Build image via pi-gen Docker
         env:
@@ -183,6 +251,8 @@ jobs:
     name: Create combined GitHub Release
     runs-on: ubuntu-latest
     needs: build
+    env:
+      REL: trixie
     steps:
       - name: Download Lite artifact
         uses: actions/download-artifact@v4
@@ -194,32 +264,63 @@ jobs:
         with:
           name: rpios-arm64-desktop.img.xz
 
+      - name: Download Desktop Full artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rpios-arm64-desktop-full.img.xz
+
+      - name: Download Kiosk artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rpios-arm64-kiosk.img.xz
+
       - name: Combine checksums
         run: |
           set -eux
-          cat rpios-arm64-lite.img.xz.sha256 rpios-arm64-desktop.img.xz.sha256 > sha256sums.txt
+          cat \
+            rpios-arm64-lite.img.xz.sha256 \
+            rpios-arm64-desktop.img.xz.sha256 \
+            rpios-arm64-desktop-full.img.xz.sha256 \
+            rpios-arm64-kiosk.img.xz.sha256 \
+            > sha256sums.txt
           ls -lh
 
       - name: Build manifest
+        id: manifest
         run: |
           set -eux
           {
-          echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          echo "repo_commit=${{ github.sha }}"
-          echo "workflow_run=${{ github.run_id }}"
-          echo "workflow_attempt=${{ github.run_attempt }}"
-          echo "release=trixie"
-          echo "arch=arm64"
-          echo "runner=${{ runner.os }} $(uname -r)"
+            echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "repo_commit=${GITHUB_SHA}"
+            echo "workflow_run=${GITHUB_RUN_ID}"
+            echo "workflow_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "release=${REL}"
+            echo "arch=arm64"
+            echo "runner=${{ runner.os }} $(uname -r)"
           } > build-info.txt
           cat build-info.txt
+
+      - name: Compute tag
+        id: tag
+        run: |
+          set -eux
+          echo "ts=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Uppercase REL for display
+        run: |
+          set -eux
+          echo "REL_UPPER=${REL^^}" >> "$GITHUB_ENV"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_id }}
-          name: RPi OS arm64 (Trixie) - Lite and Desktop
+          tag_name: rpios-${{ env.REL }}-arm64-${{ steps.tag.outputs.ts }}-${{ steps.tag.outputs.short }}
+          name: RPi OS arm64 (${{ env.REL_UPPER }}) - Lite, Desktop, Full, Kiosk - ${{ steps.tag.outputs.ts }}
           files: |
             rpios-arm64-lite.img.xz
             rpios-arm64-desktop.img.xz
+            rpios-arm64-desktop-full.img.xz
+            rpios-arm64-kiosk.img.xz
             sha256sums.txt
+            build-info.txt
