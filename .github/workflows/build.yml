@@ -3,6 +3,10 @@ name: Build RPi OS arm64 (Trixie) - Lite and Desktop (Split Jobs)
 on:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -195,6 +199,20 @@ jobs:
           set -eux
           cat rpios-arm64-lite.img.xz.sha256 rpios-arm64-desktop.img.xz.sha256 > sha256sums.txt
           ls -lh
+
+      - name: Build manifest
+        run: |
+          set -eux
+          {
+          echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "repo_commit=${{ github.sha }}"
+          echo "workflow_run=${{ github.run_id }}"
+          echo "workflow_attempt=${{ github.run_attempt }}"
+          echo "release=trixie"
+          echo "arch=arm64"
+          echo "runner=${{ runner.os }} $(uname -r)"
+          } > build-info.txt
+          cat build-info.txt
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
