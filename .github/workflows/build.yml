@@ -259,113 +259,172 @@ jobs:
             out/${{ matrix.out_name }}
             out/${{ matrix.out_name }}.sha256
 
-  release:
-    name: Create combined GitHub Release
-    runs-on: ubuntu-latest
-    needs: build
-    env:
-      REL: trixie
-    steps:
-      - name: Download Lite artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: rpios-arm64-lite.img.xz
+release:
 
-      - name: Download Desktop artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: rpios-arm64-desktop.img.xz
+  name: Create combined GitHub Release
 
-      - name: Download Desktop Full artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: rpios-arm64-desktop-full.img.xz
+  runs-on: ubuntu-latest
 
-      - name: Download Kiosk artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: rpios-arm64-kiosk.img.xz
+  needs: build
 
-      - name: Combine checksums
-        run: |
-          set -eux
-          cat \
-            rpios-arm64-lite-base.img.xz.sha256 \
-            rpios-arm64-lite.img.xz.sha256 \
-            rpios-arm64-desktop.img.xz.sha256 \
-            rpios-arm64-desktop-full.img.xz.sha256 \
-            rpios-arm64-kiosk.img.xz.sha256 \
-            > sha256sums.txt
-          ls -lh
+  env:
 
-      - name: Build manifest
-        id: manifest
-        run: |
-          set -eux
-          {
-            echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-            echo "repo_commit=${GITHUB_SHA}"
-            echo "workflow_run=${GITHUB_RUN_ID}"
-            echo "workflow_attempt=${GITHUB_RUN_ATTEMPT}"
-            echo "release=${REL}"
-            echo "arch=arm64"
-            echo "runner=${{ runner.os }} $(uname -r)"
-          } > build-info.txt
-          cat build-info.txt
+    REL: trixie  # keep in sync with RELEASE in the config step
 
-      - name: Compute tag
-        id: tag
-        run: |
-          set -eux
-          echo "ts=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
-          echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+  steps:
 
-      - name: Uppercase REL for display
-        run: |
-          set -eux
-          echo "REL_UPPER=${REL^^}" >> "$GITHUB_ENV"
+    - name: Download all image artifacts
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: rpios-${{ env.REL }}-arm64-${{ steps.tag.outputs.ts }}-${{ steps.tag.outputs.short }}
-          name: RPi OS arm64 (${{ env.REL_UPPER }}) - Lite, Desktop, Full, Kiosk - ${{ steps.tag.outputs.ts }}
-          body: |
-            **Raspberry Pi OS (arm64) — ${{ env.REL }}**
-            
-            This release includes prebuilt images (compressed `.img.xz`) generated with pi-gen on GitHub Actions.
-            Each variant targets a different use-case:
-            
-            - **rpios-arm64-lite-base.img.xz** — Bare Raspberry Pi OS Lite (**stage2**). Minimal footprint, no extras.
-            - **rpios-arm64-lite.img.xz** — Lite **plus server/dev tools**: htop, nano, git, curl, wget, usbutils, build-essential, python3, python3-pip, nodejs, npm, python3-rpi.gpio, apache2, mariadb-server, php, samba.
-            - **rpios-arm64-desktop.img.xz** — Standard Desktop (**stage4**) + extras: chromium, vlc, gimp, libreoffice, thunderbird, geany (plus base utilities).
-            - **rpios-arm64-desktop-full.img.xz** — Desktop + **Recommended Software** (**stage5**) plus the same extras.
-            - **rpios-arm64-kiosk.img.xz** — Desktop with **Chromium kiosk** (auto-login on tty1, startx, openbox, chromium in `--kiosk --incognito`).  
-              Change the start URL by editing **/boot/kiosk-url.txt** on the flashed card.
-            
-            **Common defaults**
-            - Hostname: `rpi`
-            - First user: `pi` (created by first-boot wizard; password set on first boot; user rename allowed)
-            - SSH: enabled (password login allowed by default)
-            - Locale: `en_CA.UTF-8`
-            - Timezone: `America/Halifax`
-            - Keyboard: `ca`
-            - Compression: `xz` level `6`
-            
-            **Verification & metadata**
-            - Checksums: `sha256sums.txt`
-            - Build manifest: `build-info.txt` (UTC timestamp, commit, runner, release, arch)
-            
-            **Flashing**
-            Use **Raspberry Pi Imager** or **balenaEtcher** and select the `.img.xz` directly (no manual decompression needed).
-            
-            **Notes**
-            For headless hardened SSH, switch to key-only auth (set `PUBKEY_ONLY_SSH="1"` in config and add your public key via a custom stage).
-          files: |
-            rpios-arm64-lite-base.img.xz
-            rpios-arm64-lite.img.xz
-            rpios-arm64-desktop.img.xz
-            rpios-arm64-desktop-full.img.xz
-            rpios-arm64-kiosk.img.xz
-            sha256sums.txt
-            build-info.txt
+      uses: actions/download-artifact@v4
+
+      with:
+
+        pattern: "*.img.xz"
+
+        merge-multiple: true
+
+
+
+    - name: Build manifest
+
+      id: manifest
+
+      run: |
+
+        set -eux
+
+        {
+
+          echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" 
+
+          echo "repo_commit=${GITHUB_SHA}"
+
+          echo "workflow_run=${GITHUB_RUN_ID}"
+
+          echo "workflow_attempt=${GITHUB_RUN_ATTEMPT}"
+
+          echo "release=${REL}"
+
+          echo "arch=arm64"
+
+          echo "runner=${{ runner.os }} $(uname -r)"
+
+        } > build-info.txt
+
+        cat build-info.txt
+
+
+
+    - name: Compute tag
+
+      id: tag
+
+      run: |
+
+        set -eux
+
+        echo "ts=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+        echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+
+
+    - name: Uppercase REL for display
+
+      run: |
+
+        set -eux
+
+        echo "REL_UPPER=${REL^^}" >> "$GITHUB_ENV"
+
+
+
+    - name: Build checksums
+
+      run: |
+
+        set -eux
+
+        ls -lh *.img.xz
+
+        : > sha256sums.txt
+
+        for f in *.img.xz; do
+
+          sha256sum "$f" | tee "$f.sha256" >> sha256sums.txt
+
+        done
+
+
+
+    - name: Publish GitHub Release
+
+      uses: softprops/action-gh-release@v2
+
+      with:
+
+        tag_name: rpios-${{ env.REL }}-arm64-${{ steps.tag.outputs.ts }}-${{ steps.tag.outputs.short }}
+
+        name: RPi OS arm64 (${{ env.REL_UPPER }}) - Images - ${{ steps.tag.outputs.ts }}
+
+        body: |
+
+          **Raspberry Pi OS (arm64) — ${{ env.REL }}**
+
+
+
+          This release includes prebuilt images (compressed `.img.xz`) generated with pi-gen on GitHub Actions.
+
+          Each variant targets a different use-case:
+
+
+
+          - **rpios-arm64-lite-base.img.xz** — Bare Raspberry Pi OS Lite (**stage2**). Minimal footprint, no extras.
+
+          - **rpios-arm64-lite.img.xz** — Lite **plus server/dev tools**: htop, nano, git, curl, wget, usbutils, build-essential, python3, python3-pip, nodejs, npm, python3-rpi.gpio, apache2, mariadb-server, php, samba.
+
+          - **rpios-arm64-desktop.img.xz** — Standard Desktop (**stage4**) + extras: chromium, vlc, gimp, libreoffice, thunderbird, geany (plus base utilities).
+
+          - **rpios-arm64-desktop-full.img.xz** — Desktop + **Recommended Software** (**stage5**) plus the same extras.
+
+          - **rpios-arm64-kiosk.img.xz** — Desktop with **Chromium kiosk** (auto-login on tty1, startx, openbox, chromium in `--kiosk --incognito`).
+
+            Change the start URL by editing **/boot/kiosk-url.txt** on the flashed card.
+
+
+
+          **Common defaults**
+
+          - Hostname: `rpi`
+
+          - First user: `pi` (created by first-boot wizard; password set on first boot; user rename allowed)
+
+          - SSH: enabled (password login allowed by default)
+
+          - Locale: `en_CA.UTF-8`, Timezone: `America/Halifax`, Keyboard: `ca`
+
+          - Compression: `xz` level `6`
+
+
+
+          **Verification & metadata**
+
+          - Checksums: `sha256sums.txt`
+
+          - Build manifest: `build-info.txt` (UTC timestamp, commit, runner, release, arch)
+
+
+
+          **Flashing**
+
+          Use **Raspberry Pi Imager** or **balenaEtcher** and select the `.img.xz` directly (no manual decompression needed).
+
+        files: |
+
+          *.img.xz
+
+          *.img.xz.sha256
+
+          sha256sums.txt
+
+          build-info.txt
