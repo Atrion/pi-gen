@@ -35,15 +35,6 @@ jobs:
             out_name: "rpios-arm64-lite-base.img.xz"
 
     steps:
-
-      - name: Download Lite Base artifact
-
-        uses: actions/download-artifact@v4
-
-        with:
-
-          name: rpios-arm64-lite-base.img.xz
-
       - name: Check out this repo (config + extras)
         uses: actions/checkout@v4
 
@@ -77,33 +68,7 @@ jobs:
           set -eux
           if [ ! -f config ]; then
             : > config
-            printf '%s\n' \
-              '# ---- Image basics ----' \
-              'IMG_NAME="rpios-arm64"' \
-              'RELEASE="trixie"' \
-              'PI_GEN_RELEASE="Raspberry Pi reference"' \
-              '' \
-              '# ---- Compression ----' \
-              'DEPLOY_COMPRESSION="xz"' \
-              'COMPRESSION_LEVEL="6"' \
-              '' \
-              '# ---- Identity / login ----' \
-              'TARGET_HOSTNAME="rpi"' \
-              'FIRST_USER_NAME="pi"' \
-              'FIRST_USER_PASS=""' \
-              'DISABLE_FIRST_BOOT_USER_RENAME="0"' \
-              '' \
-              '# ---- Regional ----' \
-              'LOCALE_DEFAULT="en_CA.UTF-8"' \
-              'TIMEZONE_DEFAULT="America/Halifax"' \
-              'KEYBOARD_KEYMAP="ca"' \
-              'KEYBOARD_LAYOUT="English (Canada)"' \
-              '' \
-              '# ---- Connectivity ----' \
-              'WPA_COUNTRY="CA"' \
-              'ENABLE_SSH="1"' \
-              'PUBKEY_ONLY_SSH="0"' \
-              >> config
+            printf '%s\n'               '# ---- Image basics ----'               'IMG_NAME="rpios-arm64"'               'RELEASE="trixie"'               'PI_GEN_RELEASE="Raspberry Pi reference"'               ''               '# ---- Compression ----'               'DEPLOY_COMPRESSION="xz"'               'COMPRESSION_LEVEL="6"'               ''               '# ---- Identity / login ----'               'TARGET_HOSTNAME="rpi"'               'FIRST_USER_NAME="pi"'               'FIRST_USER_PASS=""'               'DISABLE_FIRST_BOOT_USER_RENAME="0"'               ''               '# ---- Regional ----'               'LOCALE_DEFAULT="en_CA.UTF-8"'               'TIMEZONE_DEFAULT="America/Halifax"'               'KEYBOARD_KEYMAP="ca"'               'KEYBOARD_LAYOUT="English (Canada)"'               ''               '# ---- Connectivity ----'               'WPA_COUNTRY="CA"'               'ENABLE_SSH="1"'               'PUBKEY_ONLY_SSH="0"'               >> config
           fi
           echo "---- config ----"
           cat config
@@ -117,15 +82,7 @@ jobs:
           for d in lite-extras desktop-extras kiosk-extras; do
             if [ ! -f "$d/prerun.sh" ]; then
               : > "$d/prerun.sh"
-              printf '%s\n' \
-                '#!/bin/bash -e' \
-                'if [ ! -d "${ROOTFS_DIR}" ]; then' \
-                '  mkdir -p "${ROOTFS_DIR}"' \
-                'fi' \
-                'if [ -d "${PREV_ROOTFS_DIR}" ]; then' \
-                '  rsync -aHAXx --numeric-ids --delete "${PREV_ROOTFS_DIR}/" "${ROOTFS_DIR}/"' \
-                'fi' \
-                > "$d/prerun.sh"
+              printf '%s\n'                 '#!/bin/bash -e'                 'if [ ! -d "${ROOTFS_DIR}" ]; then'                 '  mkdir -p "${ROOTFS_DIR}"'                 'fi'                 'if [ -d "${PREV_ROOTFS_DIR}" ]; then'                 '  rsync -aHAXx --numeric-ids --delete "${PREV_ROOTFS_DIR}/" "${ROOTFS_DIR}/"'                 'fi'                 > "$d/prerun.sh"
               chmod +x "$d/prerun.sh"
             fi
           done
@@ -133,33 +90,22 @@ jobs:
           # Lite package list
           if [ ! -f "lite-extras/01-packages/00-packages" ]; then
             : > lite-extras/01-packages/00-packages
-            printf '%s\n' \
-              htop nano git curl wget net-tools usbutils build-essential \
-              python3 python3-pip nodejs npm python3-rpi.gpio \
-              apache2 mariadb-server php samba \
-              > lite-extras/01-packages/00-packages
+            printf '%s\n'               htop nano git curl wget net-tools usbutils build-essential               python3 python3-pip nodejs npm python3-rpi.gpio               apache2 mariadb-server php samba               > lite-extras/01-packages/00-packages
           fi
 
           # Desktop package list
           if [ ! -f "desktop-extras/01-packages/00-packages" ]; then
             : > desktop-extras/01-packages/00-packages
-            printf '%s\n' \
-              htop nano git curl wget net-tools usbutils build-essential \
-              python3 python3-pip nodejs npm python3-rpi.gpio \
-              apache2 mariadb-server php samba \
-              chromium vlc gimp libreoffice thunderbird geany \
-              > desktop-extras/01-packages/00-packages
+            printf '%s\n'               htop nano git curl wget net-tools usbutils build-essential               python3 python3-pip nodejs npm python3-rpi.gpio               apache2 mariadb-server php samba               chromium vlc gimp libreoffice thunderbird geany               > desktop-extras/01-packages/00-packages
           fi
 
           # Kiosk package list
           if [ ! -f "kiosk-extras/01-packages/00-packages" ]; then
             : > kiosk-extras/01-packages/00-packages
-            printf '%s\n' \
-              chromium xserver-xorg x11-xserver-utils xinit openbox unclutter \
-              > kiosk-extras/01-packages/00-packages
+            printf '%s\n'               chromium xserver-xorg x11-xserver-utils xinit openbox unclutter               > kiosk-extras/01-packages/00-packages
           fi
 
-          # Kiosk setup script (no YAML heredocs; build script lines via echo)
+          # Kiosk setup script (build via echo to avoid YAML heredocs)
           if [ ! -f "kiosk-extras/02-run-chroot.sh" ]; then
             : > kiosk-extras/02-run-chroot.sh
             chmod +x kiosk-extras/02-run-chroot.sh
@@ -259,172 +205,83 @@ jobs:
             out/${{ matrix.out_name }}
             out/${{ matrix.out_name }}.sha256
 
-release:
-
-  name: Create combined GitHub Release
-
-  runs-on: ubuntu-latest
-
-  needs: build
-
-  env:
-
-    REL: trixie  # keep in sync with RELEASE in the config step
-
-  steps:
-
-    - name: Download all image artifacts
-
-      uses: actions/download-artifact@v4
-
-      with:
-
-        pattern: "*.img.xz"
-
-        merge-multiple: true
-
-
-
-    - name: Build manifest
-
-      id: manifest
-
-      run: |
-
-        set -eux
-
-        {
-
-          echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" 
-
-          echo "repo_commit=${GITHUB_SHA}"
-
-          echo "workflow_run=${GITHUB_RUN_ID}"
-
-          echo "workflow_attempt=${GITHUB_RUN_ATTEMPT}"
-
-          echo "release=${REL}"
-
-          echo "arch=arm64"
-
-          echo "runner=${{ runner.os }} $(uname -r)"
-
-        } > build-info.txt
-
-        cat build-info.txt
-
-
-
-    - name: Compute tag
-
-      id: tag
-
-      run: |
-
-        set -eux
-
-        echo "ts=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
-
-        echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-
-
-    - name: Uppercase REL for display
-
-      run: |
-
-        set -eux
-
-        echo "REL_UPPER=${REL^^}" >> "$GITHUB_ENV"
-
-
-
-    - name: Build checksums
-
-      run: |
-
-        set -eux
-
-        ls -lh *.img.xz
-
-        : > sha256sums.txt
-
-        for f in *.img.xz; do
-
-          sha256sum "$f" | tee "$f.sha256" >> sha256sums.txt
-
-        done
-
-
-
-    - name: Publish GitHub Release
-
-      uses: softprops/action-gh-release@v2
-
-      with:
-
-        tag_name: rpios-${{ env.REL }}-arm64-${{ steps.tag.outputs.ts }}-${{ steps.tag.outputs.short }}
-
-        name: RPi OS arm64 (${{ env.REL_UPPER }}) - Images - ${{ steps.tag.outputs.ts }}
-
-        body: |
-
-          **Raspberry Pi OS (arm64) — ${{ env.REL }}**
-
-
-
-          This release includes prebuilt images (compressed `.img.xz`) generated with pi-gen on GitHub Actions.
-
-          Each variant targets a different use-case:
-
-
-
-          - **rpios-arm64-lite-base.img.xz** — Bare Raspberry Pi OS Lite (**stage2**). Minimal footprint, no extras.
-
-          - **rpios-arm64-lite.img.xz** — Lite **plus server/dev tools**: htop, nano, git, curl, wget, usbutils, build-essential, python3, python3-pip, nodejs, npm, python3-rpi.gpio, apache2, mariadb-server, php, samba.
-
-          - **rpios-arm64-desktop.img.xz** — Standard Desktop (**stage4**) + extras: chromium, vlc, gimp, libreoffice, thunderbird, geany (plus base utilities).
-
-          - **rpios-arm64-desktop-full.img.xz** — Desktop + **Recommended Software** (**stage5**) plus the same extras.
-
-          - **rpios-arm64-kiosk.img.xz** — Desktop with **Chromium kiosk** (auto-login on tty1, startx, openbox, chromium in `--kiosk --incognito`).
-
-            Change the start URL by editing **/boot/kiosk-url.txt** on the flashed card.
-
-
-
-          **Common defaults**
-
-          - Hostname: `rpi`
-
-          - First user: `pi` (created by first-boot wizard; password set on first boot; user rename allowed)
-
-          - SSH: enabled (password login allowed by default)
-
-          - Locale: `en_CA.UTF-8`, Timezone: `America/Halifax`, Keyboard: `ca`
-
-          - Compression: `xz` level `6`
-
-
-
-          **Verification & metadata**
-
-          - Checksums: `sha256sums.txt`
-
-          - Build manifest: `build-info.txt` (UTC timestamp, commit, runner, release, arch)
-
-
-
-          **Flashing**
-
-          Use **Raspberry Pi Imager** or **balenaEtcher** and select the `.img.xz` directly (no manual decompression needed).
-
-        files: |
-
-          *.img.xz
-
-          *.img.xz.sha256
-
-          sha256sums.txt
-
-          build-info.txt
+  release:
+    name: Create combined GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      REL: trixie  # keep in sync with RELEASE in the config step
+    steps:
+      - name: Download all image artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*.img.xz"
+          merge-multiple: true
+
+      - name: Build manifest
+        id: manifest
+        run: |
+          set -eux
+          {
+            echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "repo_commit=${GITHUB_SHA}"
+            echo "workflow_run=${GITHUB_RUN_ID}"
+            echo "workflow_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "release=${REL}"
+            echo "arch=arm64"
+            echo "runner=${{ runner.os }} $(uname -r)"
+          } > build-info.txt
+          cat build-info.txt
+
+      - name: Compute tag
+        id: tag
+        run: |
+          set -eux
+          echo "ts=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Uppercase REL for display
+        run: |
+          set -eux
+          echo "REL_UPPER=${REL^^}" >> "$GITHUB_ENV"
+
+      - name: Build checksums
+        run: |
+          set -eux
+          ls -lh *.img.xz
+          : > sha256sums.txt
+          for f in *.img.xz; do
+            sha256sum "$f" | tee "$f.sha256" >> sha256sums.txt
+          done
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rpios-${{ env.REL }}-arm64-${{ steps.tag.outputs.ts }}-${{ steps.tag.outputs.short }}
+          name: RPi OS arm64 (${{ env.REL_UPPER }}) - Images - ${{ steps.tag.outputs.ts }}
+          body: |
+            **Raspberry Pi OS (arm64) — ${{ env.REL }}**
+            This release includes prebuilt images (compressed `.img.xz`) generated with pi-gen on GitHub Actions.
+            Each variant targets a different use-case:
+            - **rpios-arm64-lite-base.img.xz** — Bare Raspberry Pi OS Lite (**stage2**). Minimal footprint, no extras.
+            - **rpios-arm64-lite.img.xz** — Lite **plus server/dev tools**: htop, nano, git, curl, wget, usbutils, build-essential, python3, python3-pip, nodejs, npm, python3-rpi.gpio, apache2, mariadb-server, php, samba.
+            - **rpios-arm64-desktop.img.xz** — Standard Desktop (**stage4**) + extras: chromium, vlc, gimp, libreoffice, thunderbird, geany (plus base utilities).
+            - **rpios-arm64-desktop-full.img.xz** — Desktop + **Recommended Software** (**stage5**) plus the same extras.
+            - **rpios-arm64-kiosk.img.xz** — Desktop with **Chromium kiosk** (auto-login on tty1, startx, openbox, chromium in `--kiosk --incognito`).
+              Change the start URL by editing **/boot/kiosk-url.txt** on the flashed card.
+            **Common defaults**
+            - Hostname: `rpi`
+            - First user: `pi` (created by first-boot wizard; password set on first boot; user rename allowed)
+            - SSH: enabled (password login allowed by default)
+            - Locale: `en_CA.UTF-8`, Timezone: `America/Halifax`, Keyboard: `ca`
+            - Compression: `xz` level `6`
+            **Verification & metadata**
+            - Checksums: `sha256sums.txt`
+            - Build manifest: `build-info.txt` (UTC timestamp, commit, runner, release, arch)
+            **Flashing**
+            Use **Raspberry Pi Imager** or **balenaEtcher** and select the `.img.xz` directly (no manual decompression needed).
+          files: |
+            *.img.xz
+            *.img.xz.sha256
+            sha256sums.txt
+            build-info.txt
