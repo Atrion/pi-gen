@@ -30,8 +30,20 @@ jobs:
           - flavor: kiosk
             stage_list: "stage0 stage1 stage2 stage3 ./kiosk-extras stage4"
             out_name: "rpios-arm64-kiosk.img.xz"
+          - flavor: lite-base
+            stage_list: "stage0 stage1 stage2"
+            out_name: "rpios-arm64-lite-base.img.xz"
 
     steps:
+
+      - name: Download Lite Base artifact
+
+        uses: actions/download-artifact@v4
+
+        with:
+
+          name: rpios-arm64-lite-base.img.xz
+
       - name: Check out this repo (config + extras)
         uses: actions/checkout@v4
 
@@ -278,6 +290,7 @@ jobs:
         run: |
           set -eux
           cat \
+            rpios-arm64-lite-base.img.xz.sha256 \
             rpios-arm64-lite.img.xz.sha256 \
             rpios-arm64-desktop.img.xz.sha256 \
             rpios-arm64-desktop-full.img.xz.sha256 \
@@ -317,7 +330,39 @@ jobs:
         with:
           tag_name: rpios-${{ env.REL }}-arm64-${{ steps.tag.outputs.ts }}-${{ steps.tag.outputs.short }}
           name: RPi OS arm64 (${{ env.REL_UPPER }}) - Lite, Desktop, Full, Kiosk - ${{ steps.tag.outputs.ts }}
+          body: |
+            **Raspberry Pi OS (arm64) — ${{ env.REL }}**
+            
+            This release includes prebuilt images (compressed `.img.xz`) generated with pi-gen on GitHub Actions.
+            Each variant targets a different use-case:
+            
+            - **rpios-arm64-lite-base.img.xz** — Bare Raspberry Pi OS Lite (**stage2**). Minimal footprint, no extras.
+            - **rpios-arm64-lite.img.xz** — Lite **plus server/dev tools**: htop, nano, git, curl, wget, usbutils, build-essential, python3, python3-pip, nodejs, npm, python3-rpi.gpio, apache2, mariadb-server, php, samba.
+            - **rpios-arm64-desktop.img.xz** — Standard Desktop (**stage4**) + extras: chromium, vlc, gimp, libreoffice, thunderbird, geany (plus base utilities).
+            - **rpios-arm64-desktop-full.img.xz** — Desktop + **Recommended Software** (**stage5**) plus the same extras.
+            - **rpios-arm64-kiosk.img.xz** — Desktop with **Chromium kiosk** (auto-login on tty1, startx, openbox, chromium in `--kiosk --incognito`).  
+              Change the start URL by editing **/boot/kiosk-url.txt** on the flashed card.
+            
+            **Common defaults**
+            - Hostname: `rpi`
+            - First user: `pi` (created by first-boot wizard; password set on first boot; user rename allowed)
+            - SSH: enabled (password login allowed by default)
+            - Locale: `en_CA.UTF-8`
+            - Timezone: `America/Halifax`
+            - Keyboard: `ca`
+            - Compression: `xz` level `6`
+            
+            **Verification & metadata**
+            - Checksums: `sha256sums.txt`
+            - Build manifest: `build-info.txt` (UTC timestamp, commit, runner, release, arch)
+            
+            **Flashing**
+            Use **Raspberry Pi Imager** or **balenaEtcher** and select the `.img.xz` directly (no manual decompression needed).
+            
+            **Notes**
+            For headless hardened SSH, switch to key-only auth (set `PUBKEY_ONLY_SSH="1"` in config and add your public key via a custom stage).
           files: |
+            rpios-arm64-lite-base.img.xz
             rpios-arm64-lite.img.xz
             rpios-arm64-desktop.img.xz
             rpios-arm64-desktop-full.img.xz

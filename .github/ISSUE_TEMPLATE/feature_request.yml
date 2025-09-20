@@ -1,0 +1,11 @@
+name: Feature request
+description: Propose a new build flavor or customization
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: What would you like to add or change?
+    validations:
+      required: true

@@ -1,0 +1,7 @@
+# Normalize text files to LF
+* text=auto eol=lf
+
+# Treat shell scripts as text
+*.sh text eol=lf
+*.yml text eol=lf
+*.md  text eol=lf

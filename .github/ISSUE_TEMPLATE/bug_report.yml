@@ -1,0 +1,21 @@
+name: Bug report
+description: Report a build or image issue
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Describe the issue and expected result.
+    validations:
+      required: true
+  - type: input
+    id: release
+    attributes:
+      label: Release tag
+      description: e.g., rpios-trixie-arm64-20240101-abc1234
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / steps
+      description: Paste errors or link to the GitHub Actions run.
