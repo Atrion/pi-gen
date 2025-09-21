@@ -1,3 +1,15 @@
+[![Build](https://github.com/Atrion/pi-gen/actions/workflows/build.yml/badge.svg?branch=arm64)](https://github.com/Atrion/pi-gen/actions/workflows/build.yml)
+[![Latest release](https://img.shields.io/github/v/release/Atrion/pi-gen)](https://github.com/Atrion/pi-gen/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Atrion/pi-gen/total)](https://github.com/Atrion/pi-gen/releases)
+[![Release date](https://img.shields.io/github/release-date/Atrion/pi-gen)](https://github.com/Atrion/pi-gen/releases/latest)
+[![Last commit](https://img.shields.io/github/last-commit/Atrion/pi-gen/arm64)](https://github.com/Atrion/pi-gen/commits/arm64)
+[![License](https://img.shields.io/github/license/Atrion/pi-gen)](https://github.com/Atrion/pi-gen/blob/arm64/LICENSE)
+
+<!-- Informational (static) -->
+![Arch](https://img.shields.io/badge/arch-arm64-2ea44f)
+![OS](https://img.shields.io/badge/OS-Raspberry%20Pi%20OS%20(trixie)-d73a49)
+![Images](https://img.shields.io/badge/images-Lite%20|%20Desktop%20|%20Full%20|%20Kiosk-6f42c1)
+
 # Raspberry Pi OS Image Builder (arm64) — GitHub Actions
 
 This repository builds **Raspberry Pi OS (arm64)** images entirely on **GitHub Actions** using the official [`pi-gen`](https://github.com/RPi-Distro/pi-gen) toolchain. Each run publishes images to **GitHub Releases**.
